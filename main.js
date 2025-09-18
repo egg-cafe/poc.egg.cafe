@@ -1,3 +1,15 @@
+// Download canvas image on 'd' key press
+window.addEventListener('keydown', function(event) {
+  if (event.key === 'd' || event.key === 'D') {
+    const dataURL = canvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    link.href = dataURL;
+    link.download = 'drawing.png';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+});
 
 const canvas = document.getElementById('fish');
 const ctx = canvas.getContext('2d');
@@ -84,9 +96,13 @@ canvas.addEventListener('touchend', function(e) {
 });
 
 function resizeCanvas() {
+  // Save current content
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  // Resize canvas (this clears the content)
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
+  // Restore content (only if dimensions didn't shrink; otherwise, part of the image may be lost)
+  ctx.putImageData(imageData, 0, 0);
 }
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
-
