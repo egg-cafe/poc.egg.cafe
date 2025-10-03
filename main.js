@@ -82,6 +82,50 @@ function updateCursor() {
 let drawing = false;
 let lastX = 0, lastY = 0;
 let lastMidX = 0, lastMidY = 0;
+// Undo/Redo stacks (store ImageData)
+const undoStack = [];
+const redoStack = [];
+const MAX_HISTORY = 50;
+
+function pushState() {
+  try {
+    // Save current canvas state
+    const snap = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    undoStack.push(snap);
+    // cap history
+    if (undoStack.length > MAX_HISTORY) undoStack.shift();
+    // new action clears redo
+    redoStack.length = 0;
+  } catch (err) {
+    // getImageData can throw if canvas size is zero or tainted; ignore
+    console.warn('pushState failed', err);
+  }
+}
+
+function undo() {
+  if (undoStack.length === 0) return;
+  try {
+    const current = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const prev = undoStack.pop();
+    // push current into redo
+    redoStack.push(current);
+    ctx.putImageData(prev, 0, 0);
+  } catch (err) {
+    console.warn('undo failed', err);
+  }
+}
+
+function redo() {
+  if (redoStack.length === 0) return;
+  try {
+    const current = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const next = redoStack.pop();
+    undoStack.push(current);
+    ctx.putImageData(next, 0, 0);
+  } catch (err) {
+    console.warn('redo failed', err);
+  }
+}
 
 function getCanvasCoords(e) {
   const rect = canvas.getBoundingClientRect();
@@ -119,6 +163,7 @@ function stampAlongQuadratic(x0, y0, cx, cy, x1, y1) {
 // Mouse events
 canvas.addEventListener('mousedown', function(e) {
   drawing = true;
+  pushState();
   const { x, y } = getCanvasCoords(e);
   lastX = x;
   lastY = y;
@@ -156,6 +201,7 @@ canvas.addEventListener('mouseleave', function(e) {
 // Touch events
 canvas.addEventListener('touchstart', function(e) {
   if (e.touches.length > 0) {
+    pushState();
     drawing = true;
     const touch = e.touches[0];
     const { x, y } = getCanvasCoords(touch);
@@ -200,12 +246,16 @@ function resizeCanvas() {
   canvas.height = window.innerHeight;
   // Restore content (only if dimensions didn't shrink; otherwise, part of the image may be lost)
   ctx.putImageData(imageData, 0, 0);
+  // Clear undo/redo history because ImageData sizes changed
+  undoStack.length = 0;
+  redoStack.length = 0;
 }
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
 // Keyboard controls: 'e' toggles eraser, '[' and ']' change brush size
 window.addEventListener('keydown', function(event) {
+  const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
   if (event.key === 'e' || event.key === 'E') {
     isEraser = !isEraser;
     updateDrawingMode();
@@ -220,5 +270,14 @@ window.addEventListener('keydown', function(event) {
     brushSize = Math.min(200, brushSize + 1);
     updateDrawingMode();
     console.log('Brush size:', brushSize);
+  }
+  // Undo / Redo: Ctrl/Cmd+Z (Shift for redo), Ctrl/Cmd+Y for redo
+  if ((event.ctrlKey || event.metaKey) && (event.key === 'z' || event.key === 'Z')) {
+    event.preventDefault();
+    if (event.shiftKey) redo(); else undo();
+  }
+  if ((event.ctrlKey || event.metaKey) && (event.key === 'y' || event.key === 'Y')) {
+    event.preventDefault();
+    redo();
   }
 });
